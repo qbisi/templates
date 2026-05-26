@@ -12,11 +12,15 @@ in
 pkgs.hello-template
 ```
 
+Run `nix flake lock` after initializing this template so non-flake evaluation
+through `flake-compat.nix` can resolve the pinned inputs.
+
 ## Layout
 
 - `default.nix` imports nixpkgs with this repository's overlay applied.
 - `flake-compat.nix` loads the flake outputs for non-flake evaluation.
 - `.github/workflows/update-packages.yml` updates packages with `passthru.updateScript` every day.
+- `.github/workflows/update-nixpkgs.yml` updates the `nixpkgs` input every week.
 - `pkgs/default.nix` defines `overlays.default`, `nixosModules.default`, and `legacyPackages`.
 - `pkgs/by-name/<name>.nix` defines normal packages.
 - `pkgs/python-by-name/<name>.nix` defines Python packages.

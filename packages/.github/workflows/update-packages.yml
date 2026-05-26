@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
@@ -43,13 +43,65 @@ jobs:
       - name: Update packages
         run: |
           while IFS= read -r package; do
-            if [ -n "$package" ]; then
-              nix run nixpkgs#nix-update -- --flake --use-update-script "$package"
-            fi
+            case "$package" in
+              "")
+                ;;
+              v2ray-rules-dat)
+                latest="$(
+                  curl -fsSL https://api.github.com/repos/Loyalsoldier/v2ray-rules-dat/releases/latest \
+                    | python3 -c 'import json, sys; print(json.load(sys.stdin)["tag_name"])'
+                )"
+                current="$(nix eval --raw .#packages.x86_64-linux.v2ray-rules-dat.version)"
+
+                if [ "$latest" != "$current" ]; then
+                  geoip_hash="$(
+                    nix store prefetch-file --hash-type sha256 --json \
+                      "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/download/$latest/geoip.dat" \
+                      | python3 -c 'import json, sys; print(json.load(sys.stdin)["hash"])'
+                  )"
+                  geosite_hash="$(
+                    nix store prefetch-file --hash-type sha256 --json \
+                      "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/download/$latest/geosite.dat" \
+                      | python3 -c 'import json, sys; print(json.load(sys.stdin)["hash"])'
+                  )"
+
+                  python3 - "$latest" "$geoip_hash" "$geosite_hash" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          version, geoip_hash, geosite_hash = sys.argv[1:]
+          path = Path("pkgs/by-name/v2ray-rules-dat.nix")
+          text = path.read_text()
+          text = re.sub(r'version = "[^"]+";', f'version = "{version}";', text, count=1)
+          text = re.sub(
+              r'(url = "https://github\.com/Loyalsoldier/v2ray-rules-dat/releases/download/\$\{finalAttrs\.version\}/geoip\.dat";\n\s*hash = ")[^"]+(";)',
+              rf'\g<1>{geoip_hash}\2',
+              text,
+              count=1,
+          )
+          text = re.sub(
+              r'(url = "https://github\.com/Loyalsoldier/v2ray-rules-dat/releases/download/\$\{finalAttrs\.version\}/geosite\.dat";\n\s*hash = ")[^"]+(";)',
+              rf'\g<1>{geosite_hash}\2',
+              text,
+              count=1,
+          )
+          path.write_text(text)
+          PY
+                fi
+                ;;
+              python3-*)
+                package_name="${package#python3-}"
+                nix run nixpkgs#nix-update -- --flake --override-filename "pkgs/python-by-name/${package_name}.nix" "$package"
+                ;;
+              *)
+                nix run nixpkgs#nix-update -- --flake --override-filename "pkgs/by-name/${package}.nix" "$package"
+                ;;
+            esac
           done < /tmp/packages-to-update
 
       - name: Commit
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
