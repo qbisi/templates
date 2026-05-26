@@ -1,0 +1,56 @@
+name: Nix (Update Packages)
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    name: Update packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Find packages with update scripts
+        run: |
+          : > /tmp/packages-to-update
+
+          find pkgs/by-name -maxdepth 1 -type f -name '*.nix' -print0 \
+            | while IFS= read -r -d '' file; do
+              if grep -q 'updateScript' "$file"; then
+                basename "$file" .nix >> /tmp/packages-to-update
+              fi
+            done
+
+          find pkgs/python-by-name -maxdepth 1 -type f -name '*.nix' -print0 \
+            | while IFS= read -r -d '' file; do
+              if grep -q 'updateScript' "$file"; then
+                printf 'python3-%s\n' "$(basename "$file" .nix)" >> /tmp/packages-to-update
+              fi
+            done
+
+          sort -u /tmp/packages-to-update -o /tmp/packages-to-update
+          cat /tmp/packages-to-update
+
+      - name: Update packages
+        run: |
+          while IFS= read -r package; do
+            if [ -n "$package" ]; then
+              nix run nixpkgs#nix-update -- --flake --use-update-script "$package"
+            fi
+          done < /tmp/packages-to-update
+
+      - name: Commit
+        uses: stefanzweifel/git-auto-commit-action@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          commit_message: "[gha] Nix: update packages"

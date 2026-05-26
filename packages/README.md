@@ -16,6 +16,7 @@ pkgs.hello-template
 
 - `default.nix` imports nixpkgs with this repository's overlay applied.
 - `flake-compat.nix` loads the flake outputs for non-flake evaluation.
+- `.github/workflows/update-packages.yml` updates packages with `passthru.updateScript` every day.
 - `pkgs/default.nix` defines `overlays.default`, `nixosModules.default`, and `legacyPackages`.
 - `pkgs/by-name/<name>.nix` defines normal packages.
 - `pkgs/python-by-name/<name>.nix` defines Python packages.
